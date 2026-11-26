@@ -31,7 +31,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </style>
 </head>
 <body>
-<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.6.3</div></header>
+<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.6.4</div></header>
 <main>
 <div class="tabs">
 <button class="tab active" data-tab="inventory">在庫一覧</button>
@@ -95,8 +95,8 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 <input id="importFile" type="file" accept="application/json" class="hidden">
 </div>
 <div class="panel">
-<h2>商品検索設定</h2><label>Yahoo!ショッピング Client ID</label><input id="yahooId" placeholder="任意：Client ID"><button id="saveYahoo" class="secondary">設定を保存</button><p class="hint">IDはこの端末内に保存します。検索時にJANコードを外部サービスへ送信します。<a href="https://developer.yahoo.co.jp/webapi/shopping/" target="_blank" rel="noopener">Yahoo! JAPAN Webサービス</a></p><h2>試作品について</h2>
-<p class="hint">v0.6.3：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
+<h2>商品検索設定</h2><label>Yahoo!ショッピング Client ID</label><input id="yahooId" placeholder="任意：Client ID"><button id="saveYahoo" class="secondary">設定を保存</button><p class="hint">外部商品検索はYahoo!ショッピングのみです。Client IDは端末内に保存されますが、ブラウザから確認可能です。検索時にJANコードとIDをYahoo!へ送信します。未設定でも手入力・商品名記憶を利用できます。<a href="https://developer.yahoo.co.jp/webapi/shopping/" target="_blank" rel="noopener">Yahoo! JAPAN Webサービス</a></p><h2>試作品について</h2>
+<p class="hint">v0.6.4：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
 <button id="clearBtn" class="danger">全データを削除</button>
 </div>
 </section>
@@ -145,17 +145,20 @@ async function lookupProduct(){
  const jp=n=>typeof n==='string'&&/[ぁ-んァ-ヶ一-龯]/.test(n);
  const clean=n=>String(n||'').normalize('NFKC').replace(/【[^】]*(?:送料|限定|セール)[^】]*】/g,'').replace(/送料無料|送料込み|\d+\s*(?:本|個|袋)セット|[×x]\s*\d+\s*(?:本|個|袋)?/gi,'').replace(/\s+/g,' ').trim();
  const local=products[code]||foods.find(f=>f.barcode===code)?.name;
- if(jp(local)){apply(local,'登録履歴');return}
- const known={'4902106541424':'ミツカン 味ぽん（容量は現物確認）'};
- if(known[code]){apply(known[code],'内蔵商品辞書');return}
- $('lookupStatus').textContent='商品名を検索中…';
- async function getJson(url){const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),8000);try{const res=await fetch(url,{signal:controller.signal});if(!res.ok)throw Error('HTTP '+res.status);return await res.json()}finally{clearTimeout(timer)}}
- let yahooFailed=false;
- const appid=localStorage.getItem('fridge-yahoo-id')||'';
- if(appid){try{const data=await getJson('https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?'+new URLSearchParams({appid,jan_code:code,results:'10'}));if(seq!==lookupSeq)return;const names=(data.hits||[]).filter(h=>String(h.janCode)===code).map(h=>{let n=clean(h.name),brand=clean(h.brand?.name);return brand&&!n.includes(brand)?brand+' '+n:n}).filter(jp).sort((a,b)=>a.length-b.length);if(names.length){apply(names[0],'Yahoo! 商品名候補（現物確認）');return}}catch(e){yahooFailed=true}}
- if(seq!==lookupSeq)return;
- try{const data=await getJson('https://world.openfoodfacts.org/api/v2/product/'+code+'.json?fields=product_name,product_name_ja,brands,quantity');if(seq!==lookupSeq)return;const p=data.product||{},n=[p.product_name_ja,p.product_name].find(jp);if(data.status===1&&n){let name=clean(n),brand=clean(p.brands),qty=clean(p.quantity);if(brand&&!name.includes(brand))name=brand+' '+name;if(qty&&!name.includes(qty))name+=' '+qty;apply(name,'Open Food Facts 候補（現物確認）');return}}catch(e){}
- if(seq===lookupSeq)$('lookupStatus').textContent=(yahooFailed?'Yahoo!通信失敗。':'')+'日本語商品名が見つかりません。手入力してください';
+ const tidyLocal=n=>clean(n).replace(/^[A-Za-z][A-Za-z .&'-]*,\s*(?=[ぁ-んァ-ヶ一-龯])/,'');
+ if(jp(local)){apply(tidyLocal(local),'登録履歴');return}
+ const appid=(localStorage.getItem('fridge-yahoo-id')||'').trim();
+ if(!appid){$('lookupStatus').textContent='Yahoo! Client ID未設定。商品名を手入力してください（次回から記憶します）';return}
+ $('lookupStatus').textContent='Yahoo!ショッピングで検索中…';
+ const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),8000);
+ try{
+ const res=await fetch('https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?'+new URLSearchParams({appid,jan_code:code,results:'10'}),{signal:controller.signal});
+ if(!res.ok)throw Error('HTTP '+res.status);
+ const data=await res.json();if(seq!==lookupSeq)return;
+ const names=(data.hits||[]).filter(h=>String(h.janCode)===code).map(h=>tidyLocal(h.name)).filter(jp).sort((a,b)=>a.length-b.length);
+ if(names.length){apply(names[0],'Yahoo! 商品名候補（現物確認）');return}
+ $('lookupStatus').textContent='Yahoo!で一致する日本語商品名が見つかりません。手入力してください';
+ }catch(e){if(seq===lookupSeq)$('lookupStatus').textContent='Yahoo!検索に失敗しました。設定・通信を確認するか手入力してください'}finally{clearTimeout(timer)}
 }
 function barcodeChanged(){cancelLookup();if(autoName&&$('name').value===autoName)$('name').value='';autoName='';$('barcodeConfirm').value=$('barcode').value;if(validCode($('barcode').value.trim()))lookupTimer=setTimeout(lookupProduct,450)}
 $('barcode').addEventListener('input',barcodeChanged);
