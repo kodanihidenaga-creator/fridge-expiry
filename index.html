@@ -30,7 +30,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </style>
 </head>
 <body>
-<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.1</div></header>
+<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.3</div></header>
 <main>
 <div class="tabs">
 <button class="tab active" data-tab="inventory">在庫一覧</button>
@@ -103,7 +103,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const KEY='fridge-expiry-v01';
-let foods=JSON.parse(localStorage.getItem(KEY)||'[]'), stream=null, detector=null;
+let foods=[]; try { const saved=JSON.parse(localStorage.getItem(KEY)||'[]'); foods=Array.isArray(saved)?saved:[]; } catch(e) { foods=[]; } let stream=null, detector=null;
 const $=id=>document.getElementById(id);
 function save(){localStorage.setItem(KEY,JSON.stringify(foods));render()}
 function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',2800)}
@@ -120,7 +120,12 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function consume(id){if(confirm('この食品を在庫から削除しますか？')){foods=foods.filter(f=>f.id!==id);save()}}
 function editFood(id){let f=foods.find(x=>x.id===id);if(!f)return;showTab('register');$('name').value=f.name;$('barcode').value=f.barcode;$('barcodeConfirm').value=f.barcode;$('expiry').value=f.expiry;$('place').value=f.place;$('quantity').value=f.quantity;$('kind').value=f.kind;$('memo').value=f.memo||'';$('saveBtn').dataset.edit=id}
 function showTab(t){document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));$(t).classList.remove('hidden');document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));if(t==='inventory')render()}
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+document.addEventListener('click', (event) => {
+ const tab = event.target.closest('button.tab[data-tab]');
+ if (!tab) return;
+ const target = tab.dataset.tab;
+ if (['inventory','register','settings'].includes(target)) showTab(target);
+});
 $('search').oninput=render;$('filter').onchange=render;
 $('barcode').addEventListener('input',()=>$('barcodeConfirm').value=$('barcode').value);
 $('barcode').addEventListener('change',()=>$('barcodeConfirm').value=$('barcode').value);
@@ -134,6 +139,15 @@ $('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(foods,null,2)],{ty
 $('importBtn').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{try{let data=JSON.parse(await e.target.files[0].text());if(!Array.isArray(data))throw 0;if(confirm('現在のデータをバックアップ内容で置き換えますか？')){foods=data;save();toast('読み込みました')}}catch(e){toast('バックアップファイルを読み込めません')}};
 $('clearBtn').onclick=()=>{if(confirm('登録データをすべて削除します。この操作は取り消せません。')){foods=[];save();toast('全データを削除しました')}};
-render();
+try { showTab('inventory'); render(); } catch (err) {
+ console.error('App initialization error:', err);
+ const main = document.querySelector('main');
+ if (main) {
+   const msg = document.createElement('div');
+   msg.style.cssText = 'background:#fff0ee;color:#b42318;padding:14px;border-radius:12px;margin:12px 0';
+   msg.textContent = 'アプリの初期化でエラーが発生しました。Chromeでページを再読み込みしてください。';
+   main.prepend(msg);
+ }
+}
 </script>
 </body></html>
