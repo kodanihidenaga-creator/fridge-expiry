@@ -31,7 +31,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </style>
 </head>
 <body>
-<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.6</div></header>
+<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.6.1</div></header>
 <main>
 <div class="tabs">
 <button class="tab active" data-tab="inventory">在庫一覧</button>
@@ -68,7 +68,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </div>
 <div class="panel">
 <h2>② 賞味期限を読み取る</h2>
-<button id="openOcr">インカメラ起動</button><div id="ocrCamera" class="hidden"><div class="cameraFrame"><video id="ocrVideo" playsinline muted></video><div class="guide"></div></div><p id="ocrCameraStatus" class="hint"></p><div class="row"><button id="captureOcr">撮影して読み取る</button><button id="switchOcr" class="secondary">カメラ切替</button><button id="closeOcr" class="secondary">終了</button></div></div><label>写真から読み取る（代替手段）</label><input id="ocrFile" type="file" accept="image/*" capture="user">
+<button id="openOcr">カメラ起動</button><div id="ocrCamera" class="hidden"><div class="cameraFrame"><video id="ocrVideo" playsinline muted></video><div class="guide"></div></div><p id="ocrCameraStatus" class="hint"></p><div class="row"><button id="captureOcr">撮影して読み取る</button><button id="switchOcr" class="secondary">カメラ切替</button><button id="closeOcr" class="secondary">終了</button></div></div><label>写真から読み取る（代替手段）</label><input id="ocrFile" type="file" accept="image/*" capture="user">
 <div class="row" style="margin-top:8px"><button id="ocrBtn" class="secondary">写真から日付を読み取る</button><span id="ocrStatus" class="hint" style="align-self:center"></span></div>
 <p class="hint">OCRは印字の向き・かすれ・「年月日」表記によって誤認識します。必ず読み取り結果を確認してください。</p>
 </div>
@@ -96,7 +96,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </div>
 <div class="panel">
 <h2>商品検索設定</h2><label>Yahoo!ショッピング Client ID</label><input id="yahooId" placeholder="任意：Client ID"><button id="saveYahoo" class="secondary">設定を保存</button><p class="hint">IDはこの端末内に保存します。検索時にJANコードを外部サービスへ送信します。<a href="https://developer.yahoo.co.jp/webapi/shopping/" target="_blank" rel="noopener">Yahoo! JAPAN Webサービス</a></p><h2>試作品について</h2>
-<p class="hint">v0.6：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
+<p class="hint">v0.6.1：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
 <button id="clearBtn" class="danger">全データを削除</button>
 </div>
 </section>
