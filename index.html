@@ -30,7 +30,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </style>
 </head>
 <body>
-<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.4.1</div></header>
+<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.5</div></header>
 <main>
 <div class="tabs">
 <button class="tab active" data-tab="inventory">在庫一覧</button>
@@ -58,6 +58,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 <input id="barcode" inputmode="numeric" placeholder="JANコード（スキャナー入力可）">
 <button id="scanBtn" style="flex:0 0 116px">カメラ起動</button>
 </div>
+<div class="row" style="margin-top:8px"><button id="lookupBtn" class="secondary">商品名を検索</button></div><p id="lookupStatus" class="hint" aria-live="polite"></p>
 <div id="scannerBox" class="hidden" style="margin-top:10px">
 <video id="video" playsinline></video>
 <div class="row" style="margin-top:8px"><button id="stopScan" class="secondary">読み取り終了</button></div>
@@ -94,7 +95,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </div>
 <div class="panel">
 <h2>試作品について</h2>
-<p class="hint">v0.4.1：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得、複数端末同期、通知、家族共有は今後の開発項目です。</p>
+<p class="hint">v0.5：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
 <button id="clearBtn" class="danger">全データを削除</button>
 </div>
 </section>
@@ -118,7 +119,7 @@ function render(){
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function consume(id){if(confirm('この食品を在庫から削除しますか？')){foods=foods.filter(f=>f.id!==id);save()}}
-function editFood(id){let f=foods.find(x=>x.id===id);if(!f)return;showTab('register');$('name').value=f.name;$('barcode').value=f.barcode;$('barcodeConfirm').value=f.barcode;$('expiry').value=f.expiry;$('place').value=f.place;$('quantity').value=f.quantity;$('kind').value=f.kind;$('memo').value=f.memo||'';$('saveBtn').dataset.edit=id}
+function editFood(id){cancelLookup();autoName='';let f=foods.find(x=>x.id===id);if(!f)return;showTab('register');$('name').value=f.name;$('barcode').value=f.barcode;$('barcodeConfirm').value=f.barcode;$('expiry').value=f.expiry;$('place').value=f.place;$('quantity').value=f.quantity;$('kind').value=f.kind;$('memo').value=f.memo||'';$('saveBtn').dataset.edit=id}
 function showTab(t){document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));$(t).classList.remove('hidden');document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));if(t==='inventory')render()}
 document.addEventListener('click', (event) => {
  const tab = event.target.closest('button.tab[data-tab]');
@@ -127,18 +128,38 @@ document.addEventListener('click', (event) => {
  if (['inventory','register','settings'].includes(target)) showTab(target);
 });
 $('search').oninput=render;$('filter').onchange=render;
-$('barcode').addEventListener('input',()=>$('barcodeConfirm').value=$('barcode').value);
-$('barcode').addEventListener('change',()=>$('barcodeConfirm').value=$('barcode').value);
-$('saveBtn').onclick=()=>{let name=$('name').value.trim(),expiry=$('expiry').value;if(!name||!expiry){toast('商品名と期限を入力してください');return}let id=$('saveBtn').dataset.edit;let f={id:id||String(Date.now()),name,barcode:$('barcodeConfirm').value.trim(),expiry,place:$('place').value,quantity:Math.max(1,Number($('quantity').value)||1),kind:$('kind').value,memo:$('memo').value.trim()};if(id){foods=foods.map(x=>x.id===id?f:x);delete $('saveBtn').dataset.edit}else foods.push(f);save();['name','barcode','barcodeConfirm','expiry','memo'].forEach(x=>$(x).value='');$('quantity').value=1;showTab('inventory');toast('食品を登録しました')};
+const PRODUCT_KEY='fridge-products-v05';
+let products={};try{products=JSON.parse(localStorage.getItem(PRODUCT_KEY)||'{}')||{}}catch(e){}
+let lookupSeq=0, lookupTimer, autoName='';
+function validCode(code){return /^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(code)}
+function remember(code,name){if(validCode(code)&&name){products[code]=name;try{localStorage.setItem(PRODUCT_KEY,JSON.stringify(products))}catch(e){toast('商品名の記憶に失敗しました')}}}
+function cancelLookup(){lookupSeq++;clearTimeout(lookupTimer);$('lookupStatus').textContent=''}
+async function lookupProduct(){
+ clearTimeout(lookupTimer);const seq=++lookupSeq, code=$('barcode').value.trim();
+ if(!validCode(code)){$('lookupStatus').textContent='8・12・13・14桁のコードを入力してください';return}
+ const currentName=$('name').value;
+ function apply(name,source){if(seq!==lookupSeq||$('barcode').value.trim()!==code)return;if($('name').value!==currentName||($('name').value&&$('name').value!==autoName)){$('lookupStatus').textContent='検索結果：'+name+'（入力済みの商品名を優先）';return}$('name').value=name;autoName=name;$('lookupStatus').textContent=source+'：'+name}
+ const local=products[code]||foods.find(f=>f.barcode===code)?.name;
+ if(local){apply(local,'登録履歴');return}
+ $('lookupStatus').textContent='商品名を検索中…';
+ const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),8000);
+ try{const res=await fetch('https://world.openfoodfacts.org/api/v2/product/'+code+'.json?fields=product_name,product_name_ja',{signal:controller.signal});if(!res.ok&&res.status!==404)throw Error('HTTP');const data=await res.json();if(seq!==lookupSeq)return;const name=data.product?.product_name_ja||data.product?.product_name;if(name&&data.status===1)apply(name,'商品DB');else $('lookupStatus').textContent='商品が見つかりません。商品名を手入力してください'}catch(e){if(seq===lookupSeq)$('lookupStatus').textContent='検索できません。商品名を手入力してください'}finally{clearTimeout(timeout)}
+}
+function barcodeChanged(){cancelLookup();if(autoName&&$('name').value===autoName)$('name').value='';autoName='';$('barcodeConfirm').value=$('barcode').value;if(validCode($('barcode').value.trim()))lookupTimer=setTimeout(lookupProduct,450)}
+$('barcode').addEventListener('input',barcodeChanged);
+$('barcode').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupProduct()}});
+$('lookupBtn').onclick=lookupProduct;
+$('barcodeConfirm').addEventListener('input',()=>{$('barcode').value=$('barcodeConfirm').value;barcodeChanged()});
+$('saveBtn').onclick=()=>{let name=$('name').value.trim(),expiry=$('expiry').value;if(!name||!expiry){toast('商品名と期限を入力してください');return}let id=$('saveBtn').dataset.edit;let f={id:id||String(Date.now()),name,barcode:$('barcodeConfirm').value.trim(),expiry,place:$('place').value,quantity:Math.max(1,Number($('quantity').value)||1),kind:$('kind').value,memo:$('memo').value.trim()};cancelLookup();remember(f.barcode,name);autoName='';if(id){foods=foods.map(x=>x.id===id?f:x);delete $('saveBtn').dataset.edit}else foods.push(f);save();['name','barcode','barcodeConfirm','expiry','memo'].forEach(x=>$(x).value='');$('quantity').value=1;showTab('inventory');toast('食品を登録しました')};
 $('scanBtn').onclick=async()=>{if(!('BarcodeDetector'in window)){toast('このブラウザはカメラバーコード読取に未対応です。外付けスキャナーをご利用ください');return}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});$('video').srcObject=stream;await $('video').play();$('scannerBox').classList.remove('hidden');scanLoop()}catch(e){toast('カメラを起動できません。HTTPS接続とカメラ権限を確認してください')}}
-async function scanLoop(){if(!stream)return;try{let codes=await detector.detect($('video'));if(codes.length){$('barcode').value=codes[0].rawValue;$('barcodeConfirm').value=codes[0].rawValue;stopScan();toast('バーコードを読み取りました');return}}catch(e){}requestAnimationFrame(scanLoop)}
+async function scanLoop(){if(!stream)return;try{let codes=await detector.detect($('video'));if(codes.length){$('barcode').value=codes[0].rawValue;$('barcodeConfirm').value=codes[0].rawValue;stopScan();barcodeChanged();lookupProduct();toast('バーコードを読み取りました');return}}catch(e){}requestAnimationFrame(scanLoop)}
 function stopScan(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$('scannerBox').classList.add('hidden')}
 $('stopScan').onclick=stopScan;
 $('ocrBtn').onclick=async()=>{let file=$('ocrFile').files[0];if(!file){toast('先に期限表示の写真を選択してください');return}if(!window.Tesseract){toast('OCRライブラリを読み込めません。ネット接続を確認してください');return}try{$('ocrStatus').textContent='読み取り中…';let result=await Tesseract.recognize(file,'jpn+eng');let text=result.data.text;let m=text.match(/(20\d{2})\s*[年./\-]\s*(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?/);if(!m)m=text.match(/(20\d{2})[年./\-]?\s*(\d{2})[月./\-]?\s*(\d{2})/);if(m){let date=`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;$('expiry').value=date;$('ocrStatus').textContent='候補：'+date+'（必ず確認）';toast('日付候補を入力しました')}else{$('ocrStatus').textContent='日付を特定できません';toast('日付を読み取れません。手入力してください')} }catch(e){$('ocrStatus').textContent='失敗';toast('OCRに失敗しました')}};
 $('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(foods,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fridge-backup.json';a.click();URL.revokeObjectURL(a.href)};
 $('importBtn').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{try{let data=JSON.parse(await e.target.files[0].text());if(!Array.isArray(data))throw 0;if(confirm('現在のデータをバックアップ内容で置き換えますか？')){foods=data;save();toast('読み込みました')}}catch(e){toast('バックアップファイルを読み込めません')}};
-$('clearBtn').onclick=()=>{if(confirm('登録データをすべて削除します。この操作は取り消せません。')){foods=[];save();toast('全データを削除しました')}};
+$('clearBtn').onclick=()=>{if(confirm('登録データをすべて削除します。この操作は取り消せません。')){foods=[];products={};localStorage.removeItem(PRODUCT_KEY);save();toast('全データを削除しました')}};
 try { showTab('inventory'); render(); } catch (err) {
  console.error('App initialization error:', err);
  const main = document.querySelector('main');
