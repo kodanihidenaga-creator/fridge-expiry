@@ -27,10 +27,11 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#17231e;color:white;padding:11px 16px;border-radius:12px;display:none;z-index:10;max-width:90%;font-size:13px}
 .actions{display:flex;gap:7px;margin-top:9px}.actions button{font-size:12px;padding:8px 10px;min-height:36px}
 @media(min-width:650px){main{padding:22px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}}
+ .cameraFrame{position:relative;background:#111;border-radius:12px;overflow:hidden}.cameraFrame video{display:block;width:100%;max-height:none;object-fit:contain}.guide{position:absolute;left:10%;top:30%;width:80%;height:40%;border:2px dashed #65ff9a;border-radius:8px;pointer-events:none}.cameraFrame{max-width:640px;margin:auto}
 </style>
 </head>
 <body>
-<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.5.1</div></header>
+<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.6</div></header>
 <main>
 <div class="tabs">
 <button class="tab active" data-tab="inventory">在庫一覧</button>
@@ -60,14 +61,14 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </div>
 <div class="row" style="margin-top:8px"><button id="lookupBtn" class="secondary">商品名を検索</button></div><p id="lookupStatus" class="hint" aria-live="polite"></p>
 <div id="scannerBox" class="hidden" style="margin-top:10px">
-<video id="video" playsinline></video>
-<div class="row" style="margin-top:8px"><button id="stopScan" class="secondary">読み取り終了</button></div>
+<div class="cameraFrame"><video id="video" playsinline muted></video><div class="guide"></div></div><p id="scanCameraStatus" class="hint"></p>
+<div class="row" style="margin-top:8px"><button id="switchScan" class="secondary">カメラ切替</button><button id="stopScan" class="secondary">読み取り終了</button></div>
 </div>
 <p class="hint">USB/Bluetoothのバーコードリーダーは、キーボード入力方式（HID）なら入力欄に読み取るだけで使えます。カメラ読み取りは端末・ブラウザの対応状況に依存します。</p>
 </div>
 <div class="panel">
 <h2>② 賞味期限を読み取る</h2>
-<input id="ocrFile" type="file" accept="image/*" capture="environment">
+<button id="openOcr">インカメラ起動</button><div id="ocrCamera" class="hidden"><div class="cameraFrame"><video id="ocrVideo" playsinline muted></video><div class="guide"></div></div><p id="ocrCameraStatus" class="hint"></p><div class="row"><button id="captureOcr">撮影して読み取る</button><button id="switchOcr" class="secondary">カメラ切替</button><button id="closeOcr" class="secondary">終了</button></div></div><label>写真から読み取る（代替手段）</label><input id="ocrFile" type="file" accept="image/*" capture="user">
 <div class="row" style="margin-top:8px"><button id="ocrBtn" class="secondary">写真から日付を読み取る</button><span id="ocrStatus" class="hint" style="align-self:center"></span></div>
 <p class="hint">OCRは印字の向き・かすれ・「年月日」表記によって誤認識します。必ず読み取り結果を確認してください。</p>
 </div>
@@ -95,7 +96,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </div>
 <div class="panel">
 <h2>商品検索設定</h2><label>Yahoo!ショッピング Client ID</label><input id="yahooId" placeholder="任意：Client ID"><button id="saveYahoo" class="secondary">設定を保存</button><p class="hint">IDはこの端末内に保存します。検索時にJANコードを外部サービスへ送信します。<a href="https://developer.yahoo.co.jp/webapi/shopping/" target="_blank" rel="noopener">Yahoo! JAPAN Webサービス</a></p><h2>試作品について</h2>
-<p class="hint">v0.5.1：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
+<p class="hint">v0.6：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
 <button id="clearBtn" class="danger">全データを削除</button>
 </div>
 </section>
@@ -119,8 +120,8 @@ function render(){
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function consume(id){if(confirm('この食品を在庫から削除しますか？')){foods=foods.filter(f=>f.id!==id);save()}}
-function editFood(id){cancelLookup();autoName='';let f=foods.find(x=>x.id===id);if(!f)return;showTab('register');$('name').value=f.name;$('barcode').value=f.barcode;$('barcodeConfirm').value=f.barcode;$('expiry').value=f.expiry;$('place').value=f.place;$('quantity').value=f.quantity;$('kind').value=f.kind;$('memo').value=f.memo||'';$('saveBtn').dataset.edit=id}
-function showTab(t){document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));$(t).classList.remove('hidden');document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));if(t==='inventory')render()}
+function editFood(id){stopCamera();ocrRun++;$('ocrStatus').textContent='';cancelLookup();autoName='';let f=foods.find(x=>x.id===id);if(!f)return;showTab('register');$('name').value=f.name;$('barcode').value=f.barcode;$('barcodeConfirm').value=f.barcode;$('expiry').value=f.expiry;$('place').value=f.place;$('quantity').value=f.quantity;$('kind').value=f.kind;$('memo').value=f.memo||'';$('saveBtn').dataset.edit=id}
+function showTab(t){if(t!=='register'){stopCamera();ocrRun++;$('ocrStatus').textContent='';}document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));$(t).classList.remove('hidden');document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));if(t==='inventory')render()}
 document.addEventListener('click', (event) => {
  const tab = event.target.closest('button.tab[data-tab]');
  if (!tab) return;
@@ -162,11 +163,23 @@ $('barcode').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault
 $('lookupBtn').onclick=lookupProduct;
 $('barcodeConfirm').addEventListener('input',()=>{$('barcode').value=$('barcodeConfirm').value;barcodeChanged()});
 $('saveBtn').onclick=()=>{let name=$('name').value.trim(),expiry=$('expiry').value;if(!name||!expiry){toast('商品名と期限を入力してください');return}let id=$('saveBtn').dataset.edit;let f={id:id||String(Date.now()),name,barcode:$('barcodeConfirm').value.trim(),expiry,place:$('place').value,quantity:Math.max(1,Number($('quantity').value)||1),kind:$('kind').value,memo:$('memo').value.trim()};cancelLookup();remember(f.barcode,name);autoName='';if(id){foods=foods.map(x=>x.id===id?f:x);delete $('saveBtn').dataset.edit}else foods.push(f);save();['name','barcode','barcodeConfirm','expiry','memo'].forEach(x=>$(x).value='');$('quantity').value=1;showTab('inventory');toast('食品を登録しました')};
-$('scanBtn').onclick=async()=>{if(!('BarcodeDetector'in window)){toast('このブラウザはカメラバーコード読取に未対応です。外付けスキャナーをご利用ください');return}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});$('video').srcObject=stream;await $('video').play();$('scannerBox').classList.remove('hidden');scanLoop()}catch(e){toast('カメラを起動できません。HTTPS接続とカメラ権限を確認してください')}}
-async function scanLoop(){if(!stream)return;try{let codes=await detector.detect($('video'));if(codes.length){$('barcode').value=codes[0].rawValue;$('barcodeConfirm').value=codes[0].rawValue;stopScan();barcodeChanged();lookupProduct();toast('バーコードを読み取りました');return}}catch(e){}requestAnimationFrame(scanLoop)}
-function stopScan(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$('scannerBox').classList.add('hidden')}
-$('stopScan').onclick=stopScan;
-$('ocrBtn').onclick=async()=>{let file=$('ocrFile').files[0];if(!file){toast('先に期限表示の写真を選択してください');return}if(!window.Tesseract){toast('OCRライブラリを読み込めません。ネット接続を確認してください');return}try{$('ocrStatus').textContent='読み取り中…';let result=await Tesseract.recognize(file,'jpn+eng');let text=result.data.text;let m=text.match(/(20\d{2})\s*[年./\-]\s*(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?/);if(!m)m=text.match(/(20\d{2})[年./\-]?\s*(\d{2})[月./\-]?\s*(\d{2})/);if(m){let date=`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;$('expiry').value=date;$('ocrStatus').textContent='候補：'+date+'（必ず確認）';toast('日付候補を入力しました')}else{$('ocrStatus').textContent='日付を特定できません';toast('日付を読み取れません。手入力してください')} }catch(e){$('ocrStatus').textContent='失敗';toast('OCRに失敗しました')}};
+let cameraSeq=0, cameraMode='', facing='user', ocrRun=0;
+function stopCamera(){cameraSeq++;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}for(const id of ['video','ocrVideo'])$(id).srcObject=null;for(const id of ['scannerBox','ocrCamera'])$(id).classList.add('hidden');cameraMode=''}
+async function openCamera(mode,side='user'){
+ stopCamera();const seq=cameraSeq;cameraMode=mode;facing=side;
+ const video=$(mode==='scan'?'video':'ocrVideo'),box=$(mode==='scan'?'scannerBox':'ocrCamera'),info=$(mode==='scan'?'scanCameraStatus':'ocrCameraStatus');box.classList.remove('hidden');info.textContent='カメラ起動中…';
+ try{const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{exact:side},width:{ideal:1920},height:{ideal:1080}}});if(seq!==cameraSeq){st.getTracks().forEach(t=>t.stop());return}stream=st;video.srcObject=st;await video.play();if(seq!==cameraSeq)return;info.textContent=(side==='user'?'前面':'背面')+'カメラ・枠内に印字を合わせてください';if(mode==='scan')scanLoop(seq)}catch(e){if(seq!==cameraSeq)return;info.textContent='カメラを起動できません。権限を確認するか、カメラ切替を試してください。';if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+}
+$('scanBtn').onclick=async()=>{if(!('BarcodeDetector'in window)){toast('カメラバーコード読取に未対応です。外付けスキャナーをご利用ください');return}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});await openCamera('scan')}catch(e){toast('バーコード読み取りに未対応です')}};
+async function scanLoop(seq){if(seq!==cameraSeq||!stream)return;try{const codes=await detector.detect($('video'));if(seq!==cameraSeq)return;if(codes.length){$('barcode').value=codes[0].rawValue;stopCamera();barcodeChanged();lookupProduct();toast('バーコードを読み取りました');return}}catch(e){}if(seq===cameraSeq)requestAnimationFrame(()=>scanLoop(seq))}
+$('stopScan').onclick=stopCamera;$('closeOcr').onclick=stopCamera;
+$('switchScan').onclick=()=>openCamera('scan',facing==='user'?'environment':'user');$('switchOcr').onclick=()=>openCamera('ocr',facing==='user'?'environment':'user');
+$('openOcr').onclick=()=>{ocrRun++;$('ocrStatus').textContent='';openCamera('ocr')};
+function dateCandidates(text){const t=text.normalize('NFKC').replace(/[／]/g,'/');const out=new Set();for(const re of [/(?<!\d)(20\d{2}|\d{2})\s*[年./\-]\s*(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?(?!\d)/g,/(?<!\d)(20\d{2}|\d{2})(\d{2})(\d{2})(?!\d)/g]){for(const m of t.matchAll(re)){const y=Number(m[1])+(m[1].length===2?2000:0),mo=Number(m[2]),d=Number(m[3]),dt=new Date(Date.UTC(y,mo-1,d));if(dt.getUTCFullYear()===y&&dt.getUTCMonth()===mo-1&&dt.getUTCDate()===d)out.add(`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`)}}return [...out]}
+async function recognizeDate(image){const run=++ocrRun;if(!window.Tesseract){toast('OCRライブラリを読み込めません');return}$('ocrStatus').textContent='読み取り中…';try{const result=await Tesseract.recognize(image,'jpn+eng');if(run!==ocrRun)return;const dates=dateCandidates(result.data.text);if(dates.length===1){$('expiry').value=dates[0];$('ocrStatus').textContent='候補：'+dates[0]+'（必ず現物確認）'}else{$('ocrStatus').textContent=dates.length?'複数候補：'+dates.join(' / ')+'。現物を確認し手入力してください':'日付を特定できません。撮り直すか手入力してください'}}catch(e){if(run===ocrRun)$('ocrStatus').textContent='OCR失敗。通信環境を確認してください'}}
+$('captureOcr').onclick=()=>{const v=$('ocrVideo');if(!stream||cameraMode!=='ocr'||!v.videoWidth){toast('カメラの起動をお待ちください');return}const c=document.createElement('canvas'),w=Math.round(v.videoWidth*.8),h=Math.round(v.videoHeight*.4);c.width=w*2;c.height=h*2;const ctx=c.getContext('2d');ctx.filter='grayscale(1) contrast(1.35)';ctx.drawImage(v,Math.round(v.videoWidth*.1),Math.round(v.videoHeight*.3),w,h,0,0,c.width,c.height);stopCamera();recognizeDate(c)};
+$('ocrBtn').onclick=()=>{const file=$('ocrFile').files[0];if(!file){toast('先に写真を選択してください');return}stopCamera();recognizeDate(file)};
+window.addEventListener('pagehide',()=>{stopCamera();ocrRun++});
 $('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(foods,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fridge-backup.json';a.click();URL.revokeObjectURL(a.href)};
 $('importBtn').onclick=()=>$('importFile').click();
 $('importFile').onchange=async e=>{try{let data=JSON.parse(await e.target.files[0].text());if(!Array.isArray(data))throw 0;if(confirm('現在のデータをバックアップ内容で置き換えますか？')){foods=data;save();toast('読み込みました')}}catch(e){toast('バックアップファイルを読み込めません')}};
