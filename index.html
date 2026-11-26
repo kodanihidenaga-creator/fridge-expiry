@@ -31,7 +31,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </style>
 </head>
 <body>
-<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.6.1</div></header>
+<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.6.2</div></header>
 <main>
 <div class="tabs">
 <button class="tab active" data-tab="inventory">在庫一覧</button>
@@ -68,7 +68,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </div>
 <div class="panel">
 <h2>② 賞味期限を読み取る</h2>
-<button id="openOcr">カメラ起動</button><div id="ocrCamera" class="hidden"><div class="cameraFrame"><video id="ocrVideo" playsinline muted></video><div class="guide"></div></div><p id="ocrCameraStatus" class="hint"></p><div class="row"><button id="captureOcr">撮影して読み取る</button><button id="switchOcr" class="secondary">カメラ切替</button><button id="closeOcr" class="secondary">終了</button></div></div><label>写真から読み取る（代替手段）</label><input id="ocrFile" type="file" accept="image/*" capture="user">
+<button id="openOcr">カメラ起動</button><div id="ocrCamera" class="hidden"><div class="cameraFrame"><video id="ocrVideo" playsinline muted></video><div class="guide"></div></div><p id="ocrCameraStatus" class="hint"></p><div class="row"><button id="captureOcr">今すぐ読み取る</button><button id="switchOcr" class="secondary">カメラ切替</button><button id="closeOcr" class="secondary">終了</button></div></div><label>保存済み写真から読み取る（代替手段）</label><input id="ocrFile" class="hidden" type="file" accept="image/*">
 <div class="row" style="margin-top:8px"><button id="ocrBtn" class="secondary">写真から日付を読み取る</button><span id="ocrStatus" class="hint" style="align-self:center"></span></div>
 <p class="hint">OCRは印字の向き・かすれ・「年月日」表記によって誤認識します。必ず読み取り結果を確認してください。</p>
 </div>
@@ -96,7 +96,7 @@ video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:
 </div>
 <div class="panel">
 <h2>商品検索設定</h2><label>Yahoo!ショッピング Client ID</label><input id="yahooId" placeholder="任意：Client ID"><button id="saveYahoo" class="secondary">設定を保存</button><p class="hint">IDはこの端末内に保存します。検索時にJANコードを外部サービスへ送信します。<a href="https://developer.yahoo.co.jp/webapi/shopping/" target="_blank" rel="noopener">Yahoo! JAPAN Webサービス</a></p><h2>試作品について</h2>
-<p class="hint">v0.6.1：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
+<p class="hint">v0.6.2：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得・記憶に対応。複数端末同期、通知、家族共有は今後の開発項目です。</p>
 <button id="clearBtn" class="danger">全データを削除</button>
 </div>
 </section>
@@ -168,17 +168,22 @@ function stopCamera(){cameraSeq++;if(stream){stream.getTracks().forEach(t=>t.sto
 async function openCamera(mode,side='user'){
  stopCamera();const seq=cameraSeq;cameraMode=mode;facing=side;
  const video=$(mode==='scan'?'video':'ocrVideo'),box=$(mode==='scan'?'scannerBox':'ocrCamera'),info=$(mode==='scan'?'scanCameraStatus':'ocrCameraStatus');box.classList.remove('hidden');info.textContent='カメラ起動中…';
- try{const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{exact:side},width:{ideal:1920},height:{ideal:1080}}});if(seq!==cameraSeq){st.getTracks().forEach(t=>t.stop());return}stream=st;video.srcObject=st;await video.play();if(seq!==cameraSeq)return;info.textContent=(side==='user'?'前面':'背面')+'カメラ・枠内に印字を合わせてください';if(mode==='scan')scanLoop(seq)}catch(e){if(seq!==cameraSeq)return;info.textContent='カメラを起動できません。権限を確認するか、カメラ切替を試してください。';if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+ try{const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{exact:side},width:{ideal:1920},height:{ideal:1080}}});if(seq!==cameraSeq){st.getTracks().forEach(t=>t.stop());return}stream=st;video.srcObject=st;await video.play();if(seq!==cameraSeq)return;info.textContent=(side==='user'?'前面':'背面')+'カメラ・枠内に印字を合わせてください';if(mode==='scan')scanLoop(seq);else autoOcr(seq)}catch(e){if(seq!==cameraSeq)return;info.textContent='カメラを起動できません。権限を確認するか、カメラ切替を試してください。';if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
 }
 $('scanBtn').onclick=async()=>{if(!('BarcodeDetector'in window)){toast('カメラバーコード読取に未対応です。外付けスキャナーをご利用ください');return}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});await openCamera('scan')}catch(e){toast('バーコード読み取りに未対応です')}};
 async function scanLoop(seq){if(seq!==cameraSeq||!stream)return;try{const codes=await detector.detect($('video'));if(seq!==cameraSeq)return;if(codes.length){$('barcode').value=codes[0].rawValue;stopCamera();barcodeChanged();lookupProduct();toast('バーコードを読み取りました');return}}catch(e){}if(seq===cameraSeq)requestAnimationFrame(()=>scanLoop(seq))}
-$('stopScan').onclick=stopCamera;$('closeOcr').onclick=stopCamera;
+$('stopScan').onclick=stopCamera;$('closeOcr').onclick=()=>{ocrRun++;stopCamera();$('ocrStatus').textContent='読み取り終了'};
 $('switchScan').onclick=()=>openCamera('scan',facing==='user'?'environment':'user');$('switchOcr').onclick=()=>openCamera('ocr',facing==='user'?'environment':'user');
-$('openOcr').onclick=()=>{ocrRun++;$('ocrStatus').textContent='';openCamera('ocr')};
+$('openOcr').onclick=()=>{ocrRun++;$('ocrStatus').textContent='';getOcrWorker().catch(()=>{});openCamera('ocr')};
 function dateCandidates(text){const t=text.normalize('NFKC').replace(/[／]/g,'/');const out=new Set();for(const re of [/(?<!\d)(20\d{2}|\d{2})\s*[年./\-]\s*(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?(?!\d)/g,/(?<!\d)(20\d{2}|\d{2})(\d{2})(\d{2})(?!\d)/g]){for(const m of t.matchAll(re)){const y=Number(m[1])+(m[1].length===2?2000:0),mo=Number(m[2]),d=Number(m[3]),dt=new Date(Date.UTC(y,mo-1,d));if(dt.getUTCFullYear()===y&&dt.getUTCMonth()===mo-1&&dt.getUTCDate()===d)out.add(`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`)}}return [...out]}
-async function recognizeDate(image){const run=++ocrRun;if(!window.Tesseract){toast('OCRライブラリを読み込めません');return}$('ocrStatus').textContent='読み取り中…';try{const result=await Tesseract.recognize(image,'jpn+eng');if(run!==ocrRun)return;const dates=dateCandidates(result.data.text);if(dates.length===1){$('expiry').value=dates[0];$('ocrStatus').textContent='候補：'+dates[0]+'（必ず現物確認）'}else{$('ocrStatus').textContent=dates.length?'複数候補：'+dates.join(' / ')+'。現物を確認し手入力してください':'日付を特定できません。撮り直すか手入力してください'}}catch(e){if(run===ocrRun)$('ocrStatus').textContent='OCR失敗。通信環境を確認してください'}}
-$('captureOcr').onclick=()=>{const v=$('ocrVideo');if(!stream||cameraMode!=='ocr'||!v.videoWidth){toast('カメラの起動をお待ちください');return}const c=document.createElement('canvas'),w=Math.round(v.videoWidth*.8),h=Math.round(v.videoHeight*.4);c.width=w*2;c.height=h*2;const ctx=c.getContext('2d');ctx.filter='grayscale(1) contrast(1.35)';ctx.drawImage(v,Math.round(v.videoWidth*.1),Math.round(v.videoHeight*.3),w,h,0,0,c.width,c.height);stopCamera();recognizeDate(c)};
-$('ocrBtn').onclick=()=>{const file=$('ocrFile').files[0];if(!file){toast('先に写真を選択してください');return}stopCamera();recognizeDate(file)};
+let ocrWorkerPromise=null, ocrQueue=Promise.resolve(), autoBusy=false;
+function getOcrWorker(){if(!ocrWorkerPromise){ocrWorkerPromise=(async()=>{const w=await Tesseract.createWorker('eng');await w.setParameters({tessedit_char_whitelist:'0123456789./- ',tessedit_pageseg_mode:'7'});return w})().catch(e=>{ocrWorkerPromise=null;throw e})}return ocrWorkerPromise}
+function recognizeDate(image,seq=null){const run=++ocrRun;const valid=()=>run===ocrRun&&(seq===null||seq===cameraSeq);$('ocrStatus').textContent='OCR準備・読み取り中…';const job=async()=>{if(!valid())return false;try{const w=await getOcrWorker();if(!valid())return false;const result=await w.recognize(image);if(!valid())return false;let dates=dateCandidates(result.data.text);if(!dates.length&&seq===null){const fallback=await Tesseract.recognize(image,'jpn+eng');if(!valid())return false;dates=dateCandidates(fallback.data.text)}if(dates.length===1){$('expiry').value=dates[0];$('ocrStatus').textContent='候補：'+dates[0]+'（必ず現物確認）';if(seq!==null)stopCamera();return true}if(dates.length>1){$('ocrStatus').textContent='複数候補：'+dates.join(' / ')+'。現物を確認し手入力してください';if(seq!==null)stopCamera();return true}$('ocrStatus').textContent=seq===null?'日付を特定できません。別の写真か手入力をお試しください':'日付を探索中… 印字を枠内に合わせてください';return false}catch(e){if(valid()){$('ocrStatus').textContent='OCR失敗。通信環境を確認してください';if(seq!==null)stopCamera()}return false}};const task=ocrQueue.then(job);ocrQueue=task.catch(()=>{});return task}
+function ocrFrame(){const v=$('ocrVideo');if(!stream||cameraMode!=='ocr'||!v.videoWidth)return null;const c=document.createElement('canvas'),w=Math.round(v.videoWidth*.8),h=Math.round(v.videoHeight*.4),scale=Math.min(2,1200/w);c.width=Math.round(w*scale);c.height=Math.round(h*scale);const ctx=c.getContext('2d');ctx.filter='grayscale(1) contrast(1.35)';ctx.drawImage(v,Math.round(v.videoWidth*.1),Math.round(v.videoHeight*.3),w,h,0,0,c.width,c.height);return c}
+async function autoOcr(seq){if(seq!==cameraSeq||cameraMode!=='ocr')return;if(!autoBusy){const c=ocrFrame();if(c){autoBusy=true;try{await recognizeDate(c,seq)}finally{autoBusy=false}}}if(seq===cameraSeq)setTimeout(()=>autoOcr(seq),650)}
+$('captureOcr').onclick=()=>{if(autoBusy){toast('読み取り中です');return}const c=ocrFrame();if(!c){toast('カメラの起動をお待ちください');return}const seq=cameraSeq;autoBusy=true;recognizeDate(c,seq).finally(()=>{autoBusy=false})};
+$('ocrBtn').onclick=()=>{$('ocrFile').click()};
+$('ocrFile').onchange=()=>{const file=$('ocrFile').files[0];if(!file)return;stopCamera();recognizeDate(file);$('ocrFile').value=''};
 window.addEventListener('pagehide',()=>{stopCamera();ocrRun++});
 $('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(foods,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fridge-backup.json';a.click();URL.revokeObjectURL(a.href)};
 $('importBtn').onclick=()=>$('importFile').click();
