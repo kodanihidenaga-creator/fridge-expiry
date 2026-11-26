@@ -132,7 +132,7 @@ $('stopScan').onclick=stopScan;
 $('ocrBtn').onclick=async()=>{let file=$('ocrFile').files[0];if(!file){toast('先に期限表示の写真を選択してください');return}if(!window.Tesseract){toast('OCRライブラリを読み込めません。ネット接続を確認してください');return}try{$('ocrStatus').textContent='読み取り中…';let result=await Tesseract.recognize(file,'jpn+eng');let text=result.data.text;let m=text.match(/(20\d{2})\s*[年./\-]\s*(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?/);if(!m)m=text.match(/(20\d{2})[年./\-]?\s*(\d{2})[月./\-]?\s*(\d{2})/);if(m){let date=`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;$('expiry').value=date;$('ocrStatus').textContent='候補：'+date+'（必ず確認）';toast('日付候補を入力しました')}else{$('ocrStatus').textContent='日付を特定できません';toast('日付を読み取れません。手入力してください')} }catch(e){$('ocrStatus').textContent='失敗';toast('OCRに失敗しました')}};
 $('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(foods,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fridge-backup.json';a.click();URL.revokeObjectURL(a.href)};
 $('importBtn').onclick=()=>$('importFile').click();
-$('importFile').onchange=async e=>{try{let data=JSON.parse(await e.target.files[0].text());if(!Array.isArray(data))throw 0;if(confirm('現在のデータをバックアップ内容で置き換えますか？')){foods=data;save();toast('読み込みました')}}catch(e){toast('バックアップファイルを読み込めません')}}};
+$('importFile').onchange=async e=>{try{let data=JSON.parse(await e.target.files[0].text());if(!Array.isArray(data))throw 0;if(confirm('現在のデータをバックアップ内容で置き換えますか？')){foods=data;save();toast('読み込みました')}}catch(e){toast('バックアップファイルを読み込めません')}};
 $('clearBtn').onclick=()=>{if(confirm('登録データをすべて削除します。この操作は取り消せません。')){foods=[];save();toast('全データを削除しました')}};
 render();
 </script>
