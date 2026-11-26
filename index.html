@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#176b55">
+<title>冷蔵庫の期限管理</title>
+<style>
+:root{--green:#176b55;--bg:#f4f7f5;--ink:#17231e;--muted:#64736c;--line:#dce6e0;--red:#b42318;--amber:#9a6700}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+header{background:var(--green);color:white;padding:18px 18px 16px;position:sticky;top:0;z-index:3}
+h1{font-size:21px;margin:0 0 4px}.sub{font-size:12px;opacity:.85}
+main{max-width:900px;margin:auto;padding:14px 14px 90px}
+.tabs{display:flex;gap:8px;margin:0 0 14px}.tab{flex:1;border:1px solid var(--line);background:white;border-radius:12px;padding:12px 6px;font-weight:700;color:var(--green)}
+.tab.active{background:var(--green);color:white;border-color:var(--green)}
+.panel,.stat,.item{background:white;border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:12px}
+h2{font-size:17px;margin:0 0 12px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{margin:0;padding:12px 8px;text-align:center}.stat b{display:block;font-size:25px}.stat span{font-size:12px;color:var(--muted)}
+label{display:block;font-size:13px;font-weight:700;margin:11px 0 5px}
+input,select,button{font:inherit}input,select{width:100%;padding:12px;border:1px solid #cbd8d0;border-radius:10px;background:white;min-height:46px}
+button{border:0;border-radius:11px;padding:12px 14px;background:var(--green);color:white;font-weight:700;min-height:44px;cursor:pointer}
+button.secondary{background:#e8f1ec;color:var(--green)}button.danger{background:#fff0ee;color:var(--red)}button:disabled{opacity:.5}
+.row{display:flex;gap:8px}.row>*{flex:1;min-width:0}.hint{font-size:12px;color:var(--muted);line-height:1.6}
+.hidden{display:none!important}.item{display:flex;gap:12px;align-items:center}.itemmain{flex:1;min-width:0}.itemname{font-weight:750;overflow-wrap:anywhere}.meta{font-size:12px;color:var(--muted);margin-top:4px}.days{font-weight:800;white-space:nowrap}.expired{color:var(--red)}.soon{color:var(--amber)}.ok{color:var(--green)}
+.pill{display:inline-block;border-radius:99px;padding:3px 8px;font-size:11px;background:#edf4ef;color:var(--green);margin-top:5px}.pill.expired{background:#fff0ee;color:#b42318}.pill.soon{background:#fff3bf;color:#805600}
+video{width:100%;max-height:300px;background:#111;border-radius:12px;object-fit:cover}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#17231e;color:white;padding:11px 16px;border-radius:12px;display:none;z-index:10;max-width:90%;font-size:13px}
+.actions{display:flex;gap:7px;margin-top:9px}.actions button{font-size:12px;padding:8px 10px;min-height:36px}
+@media(min-width:650px){main{padding:22px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}}
+</style>
+</head>
+<body>
+<header><h1>冷蔵庫の期限管理</h1><div class="sub">バーコード登録・賞味期限OCR 試作品 v0.4.1</div></header>
+<main>
+<div class="tabs">
+<button class="tab active" data-tab="inventory">在庫一覧</button>
+<button class="tab" data-tab="register">食品を登録</button>
+<button class="tab" data-tab="settings">データ管理</button>
+</div>
+
+<section id="inventory">
+<div class="stats">
+<div class="stat"><b id="countAll">0</b><span>登録食品</span></div>
+<div class="stat"><b id="countSoon" class="soon">0</b><span>3日以内</span></div>
+<div class="stat"><b id="countExpired" class="expired">0</b><span>期限切れ</span></div>
+</div>
+<div class="panel" style="margin-top:12px">
+<div class="row"><input id="search" placeholder="商品名・バーコードで検索"><select id="filter" style="max-width:135px"><option value="all">すべて</option><option value="soon">3日以内</option><option value="expired">期限切れ</option><option value="fresh">4日以上</option></select></div>
+</div>
+<div id="items"></div>
+<div id="empty" class="panel hint">まだ食品が登録されていません。「食品を登録」から追加してください。</div>
+</section>
+
+<section id="register" class="hidden">
+<div class="panel">
+<h2>① バーコードを読み取る</h2>
+<div class="row">
+<input id="barcode" inputmode="numeric" placeholder="JANコード（スキャナー入力可）">
+<button id="scanBtn" style="flex:0 0 116px">カメラ起動</button>
+</div>
+<div id="scannerBox" class="hidden" style="margin-top:10px">
+<video id="video" playsinline></video>
+<div class="row" style="margin-top:8px"><button id="stopScan" class="secondary">読み取り終了</button></div>
+</div>
+<p class="hint">USB/Bluetoothのバーコードリーダーは、キーボード入力方式（HID）なら入力欄に読み取るだけで使えます。カメラ読み取りは端末・ブラウザの対応状況に依存します。</p>
+</div>
+<div class="panel">
+<h2>② 賞味期限を読み取る</h2>
+<input id="ocrFile" type="file" accept="image/*" capture="environment">
+<div class="row" style="margin-top:8px"><button id="ocrBtn" class="secondary">写真から日付を読み取る</button><span id="ocrStatus" class="hint" style="align-self:center"></span></div>
+<p class="hint">OCRは印字の向き・かすれ・「年月日」表記によって誤認識します。必ず読み取り結果を確認してください。</p>
+</div>
+<div class="panel">
+<h2>③ 登録内容を確認</h2>
+<div class="formgrid">
+<div><label>商品名 *</label><input id="name" placeholder="例：牛乳 1000ml"></div>
+<div><label>バーコード</label><input id="barcodeConfirm" placeholder="JANコード"></div>
+<div><label>賞味期限・消費期限 *</label><input id="expiry" type="date"></div>
+<div><label>保管場所</label><select id="place"><option>冷蔵室</option><option>冷凍室</option><option>野菜室</option><option>常温</option></select></div>
+<div><label>数量</label><input id="quantity" type="number" min="1" value="1"></div>
+<div><label>期限の種類</label><select id="kind"><option>賞味期限</option><option>消費期限</option></select></div>
+</div>
+<label>メモ（任意）</label><input id="memo" placeholder="開封日、家族用など">
+<button id="saveBtn" style="width:100%;margin-top:14px">この内容で登録する</button>
+</div>
+</section>
+
+<section id="settings" class="hidden">
+<div class="panel">
+<h2>データのバックアップ</h2>
+<p class="hint">データはこのタブレットのブラウザ内に保存されます。ブラウザのデータ消去や端末変更に備え、定期的にバックアップしてください。</p>
+<div class="row"><button id="exportBtn">データを書き出す</button><button id="importBtn" class="secondary">バックアップを読み込む</button></div>
+<input id="importFile" type="file" accept="application/json" class="hidden">
+</div>
+<div class="panel">
+<h2>試作品について</h2>
+<p class="hint">v0.4.1：3段階の期限アラート・在庫登録・期限一覧・検索・期限判定・OCR補助・JSONバックアップに対応。商品名の自動取得、複数端末同期、通知、家族共有は今後の開発項目です。</p>
+<button id="clearBtn" class="danger">全データを削除</button>
+</div>
+</section>
+</main>
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+const KEY='fridge-expiry-v01';
+let foods=[]; try { const saved=JSON.parse(localStorage.getItem(KEY)||'[]'); foods=Array.isArray(saved)?saved:[]; } catch(e) { foods=[]; } let stream=null, detector=null;
+const $=id=>document.getElementById(id);
+function save(){localStorage.setItem(KEY,JSON.stringify(foods));render()}
+function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',2800)}
+function dayDiff(date){const a=new Date();a.setHours(0,0,0,0);const b=new Date(date+'T00:00:00');return Math.round((b-a)/86400000)}
+function status(f){let d=dayDiff(f.expiry);return d<0?'expired':d<=3?'soon':'fresh'}
+function render(){
+ $('countAll').textContent=foods.length;$('countSoon').textContent=foods.filter(f=>status(f)==='soon').length;$('countExpired').textContent=foods.filter(f=>status(f)==='expired').length;
+ const q=$('search').value.toLowerCase(),filter=$('filter').value;
+ const arr=foods.filter(f=>(f.name+' '+f.barcode).toLowerCase().includes(q)&&(filter==='all'||status(f)===filter)).sort((a,b)=>a.expiry.localeCompare(b.expiry));
+ $('items').innerHTML=arr.map(f=>{let d=dayDiff(f.expiry),st=status(f),cls=st==='expired'?'expired':st==='soon'?'soon':'ok',label=d<0?`${-d}日超過`:d===0?'今日まで':`あと${d}日`;return `<div class="item"><div class="itemmain"><div class="itemname">${esc(f.name)}</div><div class="meta">${esc(f.place)} ・ ${esc(f.kind)} ・ ${f.quantity}個</div><div class="meta">期限：${f.expiry} ${f.barcode?'・ '+esc(f.barcode):''}</div>${f.memo?`<div class="meta">${esc(f.memo)}</div>`:''}<span class="pill ${cls}">${esc(label)}</span><div class="actions"><button class="secondary" onclick="consume('${f.id}')">消費・削除</button><button class="secondary" onclick="editFood('${f.id}')">編集</button></div></div><div class="days ${cls}">${d<0?'期限切れ':d<=3?'要確認':'余裕あり'}</div></div>`}).join('');
+ $('empty').classList.toggle('hidden',arr.length>0);
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function consume(id){if(confirm('この食品を在庫から削除しますか？')){foods=foods.filter(f=>f.id!==id);save()}}
+function editFood(id){let f=foods.find(x=>x.id===id);if(!f)return;showTab('register');$('name').value=f.name;$('barcode').value=f.barcode;$('barcodeConfirm').value=f.barcode;$('expiry').value=f.expiry;$('place').value=f.place;$('quantity').value=f.quantity;$('kind').value=f.kind;$('memo').value=f.memo||'';$('saveBtn').dataset.edit=id}
+function showTab(t){document.querySelectorAll('section').forEach(s=>s.classList.add('hidden'));$(t).classList.remove('hidden');document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));if(t==='inventory')render()}
+document.addEventListener('click', (event) => {
+ const tab = event.target.closest('button.tab[data-tab]');
+ if (!tab) return;
+ const target = tab.dataset.tab;
+ if (['inventory','register','settings'].includes(target)) showTab(target);
+});
+$('search').oninput=render;$('filter').onchange=render;
+$('barcode').addEventListener('input',()=>$('barcodeConfirm').value=$('barcode').value);
+$('barcode').addEventListener('change',()=>$('barcodeConfirm').value=$('barcode').value);
+$('saveBtn').onclick=()=>{let name=$('name').value.trim(),expiry=$('expiry').value;if(!name||!expiry){toast('商品名と期限を入力してください');return}let id=$('saveBtn').dataset.edit;let f={id:id||String(Date.now()),name,barcode:$('barcodeConfirm').value.trim(),expiry,place:$('place').value,quantity:Math.max(1,Number($('quantity').value)||1),kind:$('kind').value,memo:$('memo').value.trim()};if(id){foods=foods.map(x=>x.id===id?f:x);delete $('saveBtn').dataset.edit}else foods.push(f);save();['name','barcode','barcodeConfirm','expiry','memo'].forEach(x=>$(x).value='');$('quantity').value=1;showTab('inventory');toast('食品を登録しました')};
+$('scanBtn').onclick=async()=>{if(!('BarcodeDetector'in window)){toast('このブラウザはカメラバーコード読取に未対応です。外付けスキャナーをご利用ください');return}try{detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});$('video').srcObject=stream;await $('video').play();$('scannerBox').classList.remove('hidden');scanLoop()}catch(e){toast('カメラを起動できません。HTTPS接続とカメラ権限を確認してください')}}
+async function scanLoop(){if(!stream)return;try{let codes=await detector.detect($('video'));if(codes.length){$('barcode').value=codes[0].rawValue;$('barcodeConfirm').value=codes[0].rawValue;stopScan();toast('バーコードを読み取りました');return}}catch(e){}requestAnimationFrame(scanLoop)}
+function stopScan(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$('scannerBox').classList.add('hidden')}
+$('stopScan').onclick=stopScan;
+$('ocrBtn').onclick=async()=>{let file=$('ocrFile').files[0];if(!file){toast('先に期限表示の写真を選択してください');return}if(!window.Tesseract){toast('OCRライブラリを読み込めません。ネット接続を確認してください');return}try{$('ocrStatus').textContent='読み取り中…';let result=await Tesseract.recognize(file,'jpn+eng');let text=result.data.text;let m=text.match(/(20\d{2})\s*[年./\-]\s*(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?/);if(!m)m=text.match(/(20\d{2})[年./\-]?\s*(\d{2})[月./\-]?\s*(\d{2})/);if(m){let date=`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;$('expiry').value=date;$('ocrStatus').textContent='候補：'+date+'（必ず確認）';toast('日付候補を入力しました')}else{$('ocrStatus').textContent='日付を特定できません';toast('日付を読み取れません。手入力してください')} }catch(e){$('ocrStatus').textContent='失敗';toast('OCRに失敗しました')}};
+$('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(foods,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fridge-backup.json';a.click();URL.revokeObjectURL(a.href)};
+$('importBtn').onclick=()=>$('importFile').click();
+$('importFile').onchange=async e=>{try{let data=JSON.parse(await e.target.files[0].text());if(!Array.isArray(data))throw 0;if(confirm('現在のデータをバックアップ内容で置き換えますか？')){foods=data;save();toast('読み込みました')}}catch(e){toast('バックアップファイルを読み込めません')}};
+$('clearBtn').onclick=()=>{if(confirm('登録データをすべて削除します。この操作は取り消せません。')){foods=[];save();toast('全データを削除しました')}};
+try { showTab('inventory'); render(); } catch (err) {
+ console.error('App initialization error:', err);
+ const main = document.querySelector('main');
+ if (main) {
+   const msg = document.createElement('div');
+   msg.style.cssText = 'background:#fff0ee;color:#b42318;padding:14px;border-radius:12px;margin:12px 0';
+   msg.textContent = 'アプリの初期化でエラーが発生しました。Chromeでページを再読み込みしてください。';
+   main.prepend(msg);
+ }
+}
+</script>
+</body></html>
